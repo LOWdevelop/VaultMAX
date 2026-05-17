@@ -1,134 +1,165 @@
-# VaultMAX
+<div align="center">
 
-MCP server local que funciona como segundo cérebro para projetos de desenvolvimento. Instalado uma vez no PC, conectado ao Cursor via `.cursor/mcp.json`. Cada projeto passa seu nome via variável de ambiente `PROJECT` — o vault do projeto é criado automaticamente se não existir.
+# 🧠 VaultMAX
+
+**Second brain for developers — persistent memory MCP server for Cursor**
+
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-blueviolet?style=for-the-badge)](https://modelcontextprotocol.io)
+[![OpenAI](https://img.shields.io/badge/OpenAI-Embeddings-412991?style=for-the-badge&logo=openai&logoColor=white)](https://platform.openai.com)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+
+</div>
 
 ---
 
-## Pré-requisitos
+## 🤔 What is VaultMAX?
 
-- **Node.js 22+** (usa `node:sqlite` nativo)
-- **Conta OpenAI** com acesso à API (modelo `text-embedding-3-small`)
+VaultMAX is a **local MCP server** that gives your AI assistant a persistent memory across sessions. Install it once on your machine, connect any project via `.cursor/mcp.json`, and your Cursor Composer will never forget a decision, a bug fix, or your project structure again.
+
+- 🗄️ **SQLite** database (Node.js native — no compilation needed)
+- 🔍 **Semantic search** via OpenAI embeddings (`text-embedding-3-small`)
+- 📝 **Human-readable vault** — every memory is also saved as `.md` files (Obsidian-ready)
+- 🪟 **Windows-first** design
+- 🔌 **One server, many projects** — just change the `PROJECT` env variable
 
 ---
 
-## Instalação no Windows
+## ⚡ Quick Start
+
+### 1. Prerequisites
+
+- Node.js 22+
+- OpenAI API key
+
+### 2. Clone & Build
 
 ```bash
-# 1. Clone ou copie a pasta vaultmax para um local fixo
-cd C:\Users\SEU_USUARIO
-git clone <repo> vaultmax
-cd vaultmax
-
-# 2. Instale as dependências
+git clone https://github.com/LOWdevelop/VaultMAX.git
+cd VaultMAX
 npm install
-
-# 3. Compile o TypeScript
 npm run build
-
-# 4. Crie o arquivo de ambiente
-copy .env.example .env
-# Edite .env e preencha OPENAI_API_KEY
 ```
 
----
+### 3. Configure your project
 
-## Configurar primeiro projeto
-
-Crie o arquivo `.cursor/mcp.json` na raiz do seu projeto:
+Create `.cursor/mcp.json` in the root of **your project**:
 
 ```json
 {
   "mcpServers": {
     "vaultmax": {
       "command": "node",
-      "args": ["C:\\Users\\SEU_USUARIO\\vaultmax\\dist\\index.js"],
+      "args": ["C:\\Users\\YOUR_USER\\VaultMAX\\dist\\index.js"],
       "env": {
-        "PROJECT": "meu-projeto",
+        "PROJECT": "my-project",
         "OPENAI_API_KEY": "sk-...",
-        "VAULT_PATH": "C:\\Users\\SEU_USUARIO\\vaultmax\\vaults"
+        "VAULT_PATH": "C:\\Users\\YOUR_USER\\VaultMAX\\vaults"
       }
     }
   }
 }
 ```
 
-Reinicie o Cursor. O VaultMAX aparece como MCP ativo.
+Restart Cursor — the 5 tools will appear automatically in Composer.
 
 ---
 
-## Configurar segundo projeto
+## 🛠️ The 5 Tools
 
-No segundo projeto, crie `.cursor/mcp.json` igual ao anterior, apenas mudando `PROJECT`:
+| Tool | Description |
+|------|-------------|
+| `vaultmax_remember` | Save a memory with type, content and optional tags |
+| `vaultmax_recall` | Semantic search — ask in natural language |
+| `vaultmax_update` | Update an existing memory by ID |
+| `vaultmax_forget` | Delete a memory permanently by ID |
+| `vaultmax_map` | List all structural map entries for the project |
+
+### Memory Types
+
+```
+decision → architectural choices, libraries, patterns adopted
+error    → bugs found, root cause, solution applied
+map      → where things live in the project
+change   → what changed in each work session
+```
+
+---
+
+## 📂 Vault Structure
+
+Every memory is stored in two places simultaneously:
+
+```
+vaults/
+└── my-project/
+    ├── decisions.md   ← architectural decisions
+    ├── changelog.md   ← errors resolved + changes
+    └── map.md         ← project structure map
+```
+
+Open `vaults/` as a vault in **Obsidian** for a beautiful knowledge base of your project.
+
+---
+
+## 🤖 Auto-Memory Rules for Cursor
+
+Copy `templates/cursorrules.md` content into your project's `.cursorrules` file to make Cursor automatically use VaultMAX on every interaction — recalling context before tasks and saving memories after.
+
+---
+
+## 🏗️ Architecture
+
+```
+src/
+├── index.ts              ← MCP server entry point (5 tools registered)
+├── tools/
+│   ├── remember.ts       ← embed + save to SQLite + write .md
+│   ├── recall.ts         ← embed query + cosine similarity search
+│   ├── update.ts         ← re-embed + update SQLite + update .md
+│   ├── forget.ts         ← delete from SQLite + remove from .md
+│   └── map.ts            ← list map-type memories
+├── db/
+│   ├── schema.ts         ← SQLite table definition
+│   └── client.ts         ← CRUD functions (node:sqlite)
+├── embeddings/
+│   └── openai.ts         ← generate, serialize, cosine similarity
+└── vault/
+    └── writer.ts         ← .md file management
+```
+
+**Storage:** Embeddings are stored as JSON strings (`text-embedding-3-small`, 1536 dimensions). Similarity search uses pure JavaScript cosine similarity — no native extensions required.
+
+---
+
+## ⚙️ Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | — | OpenAI API key (required) |
+| `PROJECT` | `default` | Current project name |
+| `VAULT_PATH` | `./vaults` | Absolute path to vaults folder |
+
+---
+
+## 📦 Multiple Projects
+
+The same VaultMAX installation serves unlimited projects. Each project gets its own isolated vault:
 
 ```json
-{
-  "mcpServers": {
-    "vaultmax": {
-      "command": "node",
-      "args": ["C:\\Users\\SEU_USUARIO\\vaultmax\\dist\\index.js"],
-      "env": {
-        "PROJECT": "outro-projeto",
-        "OPENAI_API_KEY": "sk-...",
-        "VAULT_PATH": "C:\\Users\\SEU_USUARIO\\vaultmax\\vaults"
-      }
-    }
-  }
-}
+{ "PROJECT": "project-alpha" }   →   vaults/project-alpha/
+{ "PROJECT": "project-beta"  }   →   vaults/project-beta/
 ```
 
-Cada projeto tem seu vault isolado em `vaults/<PROJECT>/`.
-
 ---
 
-## As 5 tools
+<div align="center">
 
-| Tool | O que faz |
-|------|-----------|
-| `vaultmax_remember` | Salva uma memória com tipo, conteúdo e tags opcionais |
-| `vaultmax_recall` | Busca memórias por similaridade semântica (linguagem natural) |
-| `vaultmax_update` | Atualiza o conteúdo de uma memória existente pelo ID |
-| `vaultmax_forget` | Apaga permanentemente uma memória pelo ID |
-| `vaultmax_map` | Lista todas as memórias do tipo "map" do projeto |
+Built with ❤️ to stop repeating the same mistakes across sessions.
 
-### Tipos de memória
+<br/>
 
-- **decision** — escolhas arquiteturais, bibliotecas, padrões
-- **error** — bugs encontrados, causa raiz e solução
-- **map** — mapa do projeto (onde fica cada coisa)
-- **change** — o que foi alterado em cada sessão
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/lowdevelop)
 
----
-
-## Vault no Obsidian
-
-Abra a pasta `vaults/` como vault no Obsidian:
-
-1. Obsidian → "Open folder as vault"
-2. Selecione `C:\Users\SEU_USUARIO\vaultmax\vaults`
-
-Cada projeto aparece como uma pasta com três arquivos:
-- `decisions.md` — decisões arquiteturais
-- `changelog.md` — erros resolvidos e mudanças
-- `map.md` — mapa estrutural do projeto
-
----
-
-## Configurar regras no Cursor
-
-Copie o conteúdo de `templates/cursorrules.md` para o `.cursorrules` do seu projeto para que o Composer use a memória automaticamente em toda interação.
-
----
-
-## Variáveis de ambiente
-
-| Variável | Padrão | Descrição |
-|----------|--------|-----------|
-| `OPENAI_API_KEY` | — | Chave da API OpenAI (obrigatória) |
-| `PROJECT` | `default` | Nome do projeto atual |
-| `VAULT_PATH` | `./vaults` | Caminho absoluto para a pasta de vaults |
-
----
-
-## Banco de dados
-
-O VaultMAX cria `vaultmax.db` (SQLite via `node:sqlite`) na pasta onde o servidor é executado. Embeddings são armazenados como JSON (`text-embedding-3-small`, 1536 dimensões) e a busca usa cosine similarity calculada em JavaScript puro.
+</div>
