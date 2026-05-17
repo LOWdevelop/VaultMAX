@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# environment variables (never commit real keys)
+.env
+
+# SQLite database (generated at runtime)
+vaultmax.db
+
+# vault content is local — each user has their own
+vaults/*
+!vaults/.gitkeep
+
+# internal spec
+SPEC_1.md

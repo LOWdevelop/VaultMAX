@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "vaultmax": {
+      "command": "node",
+      "args": ["C:\\Users\\SEU_USUARIO\\vaultmax\\dist\\index.js"],
+      "env": {
+        "PROJECT": "nome-do-seu-projeto",
+        "OPENAI_API_KEY": "sk-...",
+        "VAULT_PATH": "C:\\Users\\SEU_USUARIO\\vaultmax\\vaults"
+      }
+    }
+  }
+}
