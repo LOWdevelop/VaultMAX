@@ -1,6 +1,6 @@
 import path from 'path';
 import { generateEmbedding, serializeEmbedding } from '../embeddings/openai';
-import { getMemoryById, updateMemory } from '../db/client';
+import { getMemoryById, updateMemory, normalizeProject } from '../db/client';
 import { updateInVault } from '../vault/writer';
 
 interface UpdateInput {
@@ -10,7 +10,7 @@ interface UpdateInput {
 }
 
 export async function update(input: UpdateInput) {
-  const project = input.project ?? process.env.PROJECT ?? 'default';
+  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
   const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
 
   try {

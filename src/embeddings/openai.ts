@@ -22,16 +22,22 @@ export async function generateEmbedding(text: string): Promise<Float32Array> {
   }
 }
 
-export function serializeEmbedding(embedding: Float32Array): string {
-  return JSON.stringify(Array.from(embedding));
+export function serializeEmbedding(embedding: Float32Array): Buffer {
+  return Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
 }
 
-export function deserializeEmbedding(json: string): Float32Array {
-  return new Float32Array(JSON.parse(json) as number[]);
+export function deserializeEmbedding(buf: Buffer | Uint8Array): Float32Array {
+  // Copy into a fresh ArrayBuffer to guarantee 4-byte alignment for Float32Array view
+  const src = buf instanceof Buffer ? buf : Buffer.from(buf);
+  const ab = new ArrayBuffer(src.byteLength);
+  new Uint8Array(ab).set(src);
+  return new Float32Array(ab);
 }
 
 export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
-  let dot = 0, normA = 0, normB = 0;
+  let dot = 0,
+    normA = 0,
+    normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];

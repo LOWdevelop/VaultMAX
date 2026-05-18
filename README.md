@@ -66,23 +66,28 @@ Restart Cursor — the 5 tools will appear automatically in Composer.
 
 ---
 
-## 🛠️ The 5 Tools
+## 🛠️ The 8 Tools
 
 | Tool | Description |
 |------|-------------|
-| `vaultmax_remember` | Save a memory with type, content and optional tags |
-| `vaultmax_recall` | Semantic search — ask in natural language |
-| `vaultmax_update` | Update an existing memory by ID |
-| `vaultmax_forget` | Delete a memory permanently by ID |
-| `vaultmax_map` | List all structural map entries for the project |
+| `vaultmax_brief` | **One-shot context bundle** — constraints + map + recent decisions/lessons + semantic matches for the current task. Designed to give weaker AIs full project context in a single call. |
+| `vaultmax_remember` | Save a memory with type, content, tags and importance (1–5). Auto-rejects duplicates (>92% similar). |
+| `vaultmax_recall` | Semantic search weighted by importance. |
+| `vaultmax_lesson` | Convert an error+solution into a preventive RULE via AI. Surfaces in `brief` so future tasks avoid the same mistake. |
+| `vaultmax_summarize_project` | Regenerate the project map from all memories via AI. Keeps `brief` fresh. |
+| `vaultmax_update` | Update memory content by ID (re-embeds). |
+| `vaultmax_forget` | Delete a memory permanently. |
+| `vaultmax_map` | List all map-type memories, newest first. |
 
 ### Memory Types
 
 ```
-decision → architectural choices, libraries, patterns adopted
-error    → bugs found, root cause, solution applied
-map      → where things live in the project
-change   → what changed in each work session
+constraint → inviolable rules (importance auto = 5)
+lesson     → preventive rule from past error (importance auto = 4)
+decision   → architectural choices, libraries, patterns adopted
+error      → bugs found, root cause, solution applied
+map        → where things live in the project
+change     → what changed in each work session
 ```
 
 ---

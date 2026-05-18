@@ -1,5 +1,5 @@
 import path from 'path';
-import { deleteMemory } from '../db/client';
+import { deleteMemory, normalizeProject } from '../db/client';
 import { removeFromVault } from '../vault/writer';
 
 interface ForgetInput {
@@ -8,7 +8,7 @@ interface ForgetInput {
 }
 
 export async function forget(input: ForgetInput) {
-  const project = input.project ?? process.env.PROJECT ?? 'default';
+  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
   const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
 
   try {

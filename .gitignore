@@ -9,6 +9,7 @@ dist/
 
 # SQLite database (generated at runtime)
 vaultmax.db
+*.backup
 
 # vault content is local — each user has their own
 vaults/*

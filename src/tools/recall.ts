@@ -1,6 +1,5 @@
-import path from 'path';
 import { generateEmbedding, deserializeEmbedding, cosineSimilarity } from '../embeddings/openai';
-import { getAllByProject } from '../db/client';
+import { getAllByProject, normalizeProject } from '../db/client';
 
 interface RecallInput {
   query: string;
@@ -9,7 +8,7 @@ interface RecallInput {
 }
 
 export async function recall(input: RecallInput) {
-  const project = input.project ?? process.env.PROJECT ?? 'default';
+  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
   const limit = input.limit ?? 5;
 
   try {
@@ -17,15 +16,21 @@ export async function recall(input: RecallInput) {
     const memories = getAllByProject(project);
 
     return memories
-      .map((m) => ({
-        id: m.id,
-        content: m.content,
-        type: m.type,
-        tags: JSON.parse(m.tags) as string[],
-        score: cosineSimilarity(queryEmbedding, deserializeEmbedding(m.embedding)),
-        created_at: m.created_at,
-      }))
-      .filter((m) => m.score >= 0.3)
+      .map((m) => {
+        const similarity = cosineSimilarity(queryEmbedding, deserializeEmbedding(m.embedding));
+        const weight = 1 + (m.importance - 3) * 0.1; // 0.8..1.2
+        return {
+          id: m.id,
+          content: m.content,
+          type: m.type,
+          tags: JSON.parse(m.tags) as string[],
+          importance: m.importance,
+          similarity: parseFloat(similarity.toFixed(3)),
+          score: parseFloat((similarity * weight).toFixed(3)),
+          created_at: m.created_at,
+        };
+      })
+      .filter((m) => m.similarity >= 0.3)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   } catch (err) {

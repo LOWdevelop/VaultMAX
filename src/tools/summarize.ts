@@ -1,0 +1,104 @@
+import OpenAI from 'openai';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import {
+  generateEmbedding,
+  serializeEmbedding,
+  deserializeEmbedding,
+  cosineSimilarity,
+} from '../embeddings/openai';
+import { insertMemory, getAllByProject, normalizeProject } from '../db/client';
+import { appendToVault, RelatedMemory } from '../vault/writer';
+
+interface SummarizeInput {
+  project?: string;
+}
+
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
+
+/**
+ * Reads every memory for the project and produces a fresh project map via OpenAI.
+ * The map is saved as a new `map` memory (history preserved) and also appears
+ * as the latest map in vaultmax_brief / vaultmax_map.
+ */
+export async function summarize(input: SummarizeInput) {
+  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
+  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+
+  try {
+    const all = getAllByProject(project);
+    if (all.length === 0) {
+      return { success: false, error: `No memories found for project "${project}"` };
+    }
+
+    const ordered = [...all].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const memoryText = ordered
+      .map((m) => `[${m.type} · imp=${m.importance} · ${m.created_at}] ${m.content}`)
+      .join('\n\n');
+
+    const completion = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Generate a concise project map (max 500 words) covering: ' +
+            '(1) current architecture — key files, modules, technologies; ' +
+            '(2) conventions and patterns adopted; ' +
+            '(3) known limitations or open issues. ' +
+            'Use plain markdown, headings no deeper than ##, be specific, no fluff, no preamble.',
+        },
+        {
+          role: 'user',
+          content: `Memories from project "${project}" (oldest first):\n\n${memoryText}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 1200,
+    });
+
+    const summary = completion.choices[0].message.content?.trim() ?? '';
+    if (!summary) {
+      return { success: false, error: 'OpenAI returned empty summary' };
+    }
+
+    const embedding = await generateEmbedding(summary);
+    const related: RelatedMemory[] = all
+      .map((m) => ({
+        id: m.id,
+        content: m.content,
+        score: cosineSimilarity(embedding, deserializeEmbedding(m.embedding)),
+      }))
+      .filter((m) => m.score >= 0.4)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
+    const id = uuidv4();
+    const tags = ['summary', 'auto'];
+
+    insertMemory({
+      id,
+      project,
+      type: 'map',
+      content: summary,
+      tags: JSON.stringify(tags),
+      embedding: serializeEmbedding(embedding),
+      importance: 4,
+    });
+
+    appendToVault(project, 'map', summary, id, tags, 4, related, vaultPath);
+
+    return {
+      success: true,
+      id,
+      summary,
+      source_memories: all.length,
+    };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
