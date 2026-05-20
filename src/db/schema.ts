@@ -9,11 +9,24 @@ const CURRENT_SCHEMA = `
     tags TEXT DEFAULT '[]',
     embedding BLOB NOT NULL,
     importance INTEGER NOT NULL DEFAULT 3,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'superseded')),
+    superseded_by TEXT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project);
   CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type, project);
+  CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+
+  CREATE TABLE IF NOT EXISTS symbol_bindings (
+    memory_id TEXT,
+    symbol_name TEXT NOT NULL,
+    symbol_type TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_symbol_bindings_memory ON symbol_bindings(memory_id);
+  CREATE INDEX IF NOT EXISTS idx_symbol_bindings_name ON symbol_bindings(symbol_name);
 `;
 
 interface ColumnInfo { name: string; type: string }
@@ -49,10 +62,21 @@ export function initSchema(db: DatabaseSync): void {
     .get() as unknown as { sql: string }).sql;
   const hasNewTypes = tableSql.includes("'lesson'") && tableSql.includes("'constraint'");
 
+  const hasStatus = cols.some((c) => c.name === 'status');
+
   if (!hasImportance || !embeddingIsBlob || !hasNewTypes) {
     migrate(db);
   } else {
     db.exec(CURRENT_SCHEMA);
+  }
+
+  // Incremental migration: add bi-temporal columns if missing
+  if (!hasStatus) {
+    console.error('[VaultMAX] Adding bi-temporal columns (status, superseded_by)...');
+    db.exec(`ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+    db.exec(`ALTER TABLE memories ADD COLUMN superseded_by TEXT DEFAULT NULL`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)`);
+    console.error('[VaultMAX] Bi-temporal migration complete.');
   }
 }
 

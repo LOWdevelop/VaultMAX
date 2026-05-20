@@ -16,7 +16,7 @@ interface SummarizeInput {
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
-  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'dummy' });
   return _openai;
 }
 
@@ -40,30 +40,44 @@ export async function summarize(input: SummarizeInput) {
       .map((m) => `[${m.type} · imp=${m.importance} · ${m.created_at}] ${m.content}`)
       .join('\n\n');
 
-    const completion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Generate a concise project map (max 500 words) covering: ' +
-            '(1) current architecture — key files, modules, technologies; ' +
-            '(2) conventions and patterns adopted; ' +
-            '(3) known limitations or open issues. ' +
-            'Use plain markdown, headings no deeper than ##, be specific, no fluff, no preamble.',
-        },
-        {
-          role: 'user',
-          content: `Memories from project "${project}" (oldest first):\n\n${memoryText}`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 1200,
-    });
+    const apiKey = process.env.OPENAI_API_KEY;
+    const isKeyValid = apiKey && apiKey.startsWith('sk-') && !apiKey.includes('INSIRA_SUA_CHAVE_OPENAI_AQUI');
+    let summary = '';
 
-    const summary = completion.choices[0].message.content?.trim() ?? '';
+    if (isKeyValid) {
+      try {
+        const completion = await getOpenAI().chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Generate a concise project map (max 500 words) covering: ' +
+                '(1) current architecture — key files, modules, technologies; ' +
+                '(2) conventions and patterns adopted; ' +
+                '(3) known limitations or open issues. ' +
+                'Use plain markdown, headings no deeper than ##, be specific, no fluff, no preamble.',
+            },
+            {
+              role: 'user',
+              content: `Memories from project "${project}" (oldest first):\n\n${memoryText}`,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 1200,
+        });
+
+        summary = completion.choices[0].message.content?.trim() ?? '';
+      } catch (err) {
+        console.warn("OpenAI API call failed, using local summary fallback:", err);
+      }
+    }
+
     if (!summary) {
-      return { success: false, error: 'OpenAI returned empty summary' };
+      summary = `## Project Map — ${project.toUpperCase()}\n\n` +
+        `Este mapa do projeto foi compilado localmente em ${new Date().toLocaleDateString('pt-BR')}.\n\n` +
+        `### Memórias Registradas (${all.length} itens):\n` +
+        ordered.map((m) => `- **[${m.type.toUpperCase()}]** (imp=${m.importance}): ${m.content.split('\n')[0]}`).join('\n');
     }
 
     const embedding = await generateEmbedding(summary);

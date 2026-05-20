@@ -1,13 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import fs from 'fs';
 import {
   generateEmbedding,
   serializeEmbedding,
   deserializeEmbedding,
   cosineSimilarity,
 } from '../embeddings/openai';
-import { insertMemory, getAllByProject, normalizeProject, MemoryType } from '../db/client';
+import { insertMemory, getAllByProject, normalizeProject, MemoryType, bindSymbol } from '../db/client';
 import { appendToVault, RelatedMemory } from '../vault/writer';
+import { detectLanguage, extractSymbolsAsync } from '../ast/parser';
 
 interface RememberInput {
   content: string;
@@ -15,6 +17,8 @@ interface RememberInput {
   type: MemoryType;
   tags?: string[];
   importance?: number;
+  filePath?: string;
+  symbols?: string[];
 }
 
 const DUPLICATE_THRESHOLD = 0.92;
@@ -71,6 +75,44 @@ export async function remember(input: RememberInput) {
       importance,
     });
 
+    const boundSymbols: string[] = [];
+
+    // --- AST Symbol Indexing & Linking (Chronode Feature Integration) ---
+    if (input.filePath) {
+      const absolutePath = path.isAbsolute(input.filePath)
+        ? input.filePath
+        : path.resolve(process.cwd(), input.filePath);
+
+      if (fs.existsSync(absolutePath)) {
+        const code = fs.readFileSync(absolutePath, 'utf8');
+        const lang = detectLanguage(absolutePath);
+        const allSymbols = await extractSymbolsAsync(code, lang);
+
+        const contentLower = input.content.toLowerCase();
+
+        // 1. Auto-bind any symbol that is mentioned in the memory content
+        for (const sym of allSymbols) {
+          if (contentLower.includes(sym.name.toLowerCase())) {
+            bindSymbol(id, sym.name, sym.type, absolutePath);
+            boundSymbols.push(`${sym.type}:${sym.name}`);
+          }
+        }
+
+        // 2. Explicit symbols binding
+        if (input.symbols && input.symbols.length > 0) {
+          for (const symName of input.symbols) {
+            const matched = allSymbols.find((s) => s.name.toLowerCase() === symName.toLowerCase());
+            const symType = matched ? matched.type : 'function';
+            
+            if (!boundSymbols.includes(`${symType}:${symName}`)) {
+              bindSymbol(id, symName, symType, absolutePath);
+              boundSymbols.push(`${symType}:${symName}`);
+            }
+          }
+        }
+      }
+    }
+
     appendToVault(
       project,
       input.type,
@@ -82,7 +124,14 @@ export async function remember(input: RememberInput) {
       vaultPath
     );
 
-    return { success: true, id, importance, related_count: related.length, message: `Memory saved with id ${id}` };
+    return {
+      success: true,
+      id,
+      importance,
+      related_count: related.length,
+      bound_symbols: boundSymbols,
+      message: `Memory saved with id ${id}${boundSymbols.length > 0 ? ` and bound to symbols: ${boundSymbols.join(', ')}` : ''}`,
+    };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }

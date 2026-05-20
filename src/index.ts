@@ -10,6 +10,11 @@ import { getMap } from './tools/map';
 import { brief } from './tools/brief';
 import { lesson } from './tools/lesson';
 import { summarize } from './tools/summarize';
+import { buildProfile } from './tools/profile';
+import { promote } from './tools/promote';
+import { observe } from './tools/observe';
+import { supersede } from './tools/supersede';
+import { handoff } from './tools/handoff';
 
 const server = new McpServer({
   name: 'vaultmax',
@@ -44,6 +49,8 @@ srv.registerTool(
       project: z.string().optional().describe('Project name (case-insensitive; defaults to PROJECT env var)'),
       tags: z.array(z.string()).optional().describe('Optional tags'),
       importance: z.number().min(1).max(5).optional().describe('Importance 1-5 (weighs recall results)'),
+      filePath: z.string().optional().describe('Path to the code file relating to this memory for AST analysis'),
+      symbols: z.array(z.string()).optional().describe('Explicit list of symbol names in this file to link to this memory'),
     },
   },
   async (input) => {
@@ -54,6 +61,8 @@ srv.registerTool(
         project?: string;
         tags?: string[];
         importance?: number;
+        filePath?: string;
+        symbols?: string[];
       }
     );
     return json(result);
@@ -65,15 +74,23 @@ srv.registerTool(
   {
     description:
       'Semantic search across project memories. Results are weighted by importance ' +
-      '(memories with importance 5 rank ~20% higher than importance 3).',
+      '(memories with importance 5 rank ~20% higher than importance 3). ' +
+      'DEFAULT scope=auto: searches ALL projects with location boost (+0.30 current project, -0.10 others). ' +
+      'Returns compact snippets (≤120 chars). Use vaultmax_observe to hydrate IDs you need.',
     inputSchema: {
       query: z.string().describe('Natural language search query'),
       project: z.string().optional().describe('Project name (case-insensitive; defaults to PROJECT env var)'),
       limit: z.number().optional().describe('Max results (default 5)'),
+      expand: z.boolean().optional().describe('If true, returns full content inline instead of snippets (legacy mode)'),
+      scope: z.enum(['auto', 'project', 'all']).optional().describe(
+        'auto (default): cross-project search with boost. project: only active project. all: no boost.'
+      ),
     },
   },
   async (input) => {
-    const result = await recall(input as { query: string; project?: string; limit?: number });
+    const result = await recall(
+      input as { query: string; project?: string; limit?: number; expand?: boolean; scope?: 'auto' | 'project' | 'all' }
+    );
     return json(result);
   }
 );
@@ -88,10 +105,35 @@ srv.registerTool(
     inputSchema: {
       query: z.string().describe('What you are about to work on'),
       project: z.string().optional().describe('Project name (case-insensitive)'),
+      filePath: z.string().optional().describe('Path to the code file you are working on for AST symbol lookup'),
+      cursorSymbol: z.string().optional().describe('Exact name of class or function under cursor for direct memory matching'),
     },
   },
   async (input) => {
-    const result = await brief(input as { query: string; project?: string });
+    const result = await brief(
+      input as {
+        query: string;
+        project?: string;
+        filePath?: string;
+        cursorSymbol?: string;
+      }
+    );
+    return json(result);
+  }
+);
+
+srv.registerTool(
+  'vaultmax_observe',
+  {
+    description:
+      'Hydrate memory IDs with full content. Use after vaultmax_recall or vaultmax_brief returns compact snippets. ' +
+      'Pick only the 2-3 IDs you actually need — this is the pay-only-what-you-read pattern that saves ~70% of context tokens.',
+    inputSchema: {
+      ids: z.array(z.string()).describe('List of memory IDs to hydrate with full content'),
+    },
+  },
+  async (input) => {
+    const result = observe(input as { ids: string[] });
     return json(result);
   }
 );
@@ -181,6 +223,87 @@ srv.registerTool(
   }
 );
 
+srv.registerTool(
+  'vaultmax_profile',
+  {
+    description:
+      'Compile all decisions, lessons, constraints, and project maps into a live professional profile ' +
+      'with computed skill weights, project portfolios, and timelines. Generates /vaults/profile.md.',
+    inputSchema: {
+      dry_run: z
+        .boolean()
+        .optional()
+        .describe('If true, only returns the markdown in the response without saving profile.md to disk'),
+    },
+  },
+  async (input) => {
+    const result = await buildProfile(input as { dry_run?: boolean });
+    return json(result);
+  }
+);
+
+srv.registerTool(
+  'vaultmax_promote',
+  {
+    description:
+      'Promote multiple project-specific lesson memories with high similarity into a single unified universal-rule. ' +
+      'Saves to SQLite global scope (project: "global") and vaults/global/lessons.md.',
+    inputSchema: {
+      memory_ids: z.array(z.string()).describe('List of SQLite lesson memory IDs to promote'),
+      custom_summary: z
+        .string()
+        .optional()
+        .describe('Optional custom unifed rule summary to use instead of OpenAI AI generation'),
+    },
+  },
+  async (input) => {
+    const result = await promote(input as { memory_ids: string[]; custom_summary?: string });
+    return json(result);
+  }
+);
+
+srv.registerTool(
+  'vaultmax_supersede',
+  {
+    description:
+      'Replace an outdated memory with a new version. The old memory is marked as "superseded" and preserved ' +
+      'in history but hidden from recall/brief. Use when a decision, lesson, or constraint has been replaced ' +
+      'by a newer one (e.g., "switched from Prisma to Drizzle"). Prevents contradictory context in the AI.',
+    inputSchema: {
+      old_memory_id: z.string().describe('ID of the memory being replaced'),
+      new_content: z.string().describe('Updated content for the new active memory'),
+      project: z.string().optional().describe('Project name (case-insensitive)'),
+      tags: z.array(z.string()).optional().describe('Optional tags for the new memory'),
+    },
+  },
+  async (input) => {
+    const result = await supersede(
+      input as { old_memory_id: string; new_content: string; project?: string; tags?: string[] }
+    );
+    return json(result);
+  }
+);
+
+srv.registerTool(
+  'vaultmax_handoff',
+  {
+    description:
+      'Generate a dense Markdown handoff bundle for a project. Contains all constraints, decisions, lessons, ' +
+      'errors, project map, and recent changes compiled into a single file. Paste this into any AI context ' +
+      'to instantly transfer full project knowledge. Saves to vaults/<project>/HANDOFF.md.',
+    inputSchema: {
+      project: z.string().optional().describe('Project name (case-insensitive)'),
+      include_superseded: z
+        .boolean()
+        .optional()
+        .describe('If true, includes superseded (historical) decisions for evolution context'),
+    },
+  },
+  async (input) => {
+    const result = handoff(input as { project?: string; include_superseded?: boolean });
+    return json(result);
+  }
+);
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

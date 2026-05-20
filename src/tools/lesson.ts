@@ -19,7 +19,7 @@ interface LessonInput {
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
-  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'dummy' });
   return _openai;
 }
 
@@ -33,26 +33,39 @@ export async function lesson(input: LessonInput) {
   const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
 
   try {
-    const completion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You generate concise preventive rules. Given an error and its solution, write ONE actionable rule (max 2 sentences, imperative voice) that prevents the error from recurring. Output only the rule itself — no preamble, no quotes, no markdown.',
-        },
-        {
-          role: 'user',
-          content: `ERROR:\n${input.error_description}\n\nSOLUTION:\n${input.solution}`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 200,
-    });
+    const apiKey = process.env.OPENAI_API_KEY;
+    const isKeyValid = apiKey && apiKey.startsWith('sk-') && !apiKey.includes('INSIRA_SUA_CHAVE_OPENAI_AQUI');
+    let rule = '';
 
-    const rule = completion.choices[0].message.content?.trim() ?? '';
+    if (isKeyValid) {
+      try {
+        const completion = await getOpenAI().chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You generate concise preventive rules. Given an error and its solution, write ONE actionable rule (max 2 sentences, imperative voice) that prevents the error from recurring. Output only the rule itself — no preamble, no quotes, no markdown.',
+            },
+            {
+              role: 'user',
+              content: `ERROR:\n${input.error_description}\n\nSOLUTION:\n${input.solution}`,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 200,
+        });
+
+        rule = completion.choices[0].message.content?.trim() ?? '';
+      } catch (err) {
+        console.warn("OpenAI API call failed, using local rule fallback:", err);
+      }
+    }
+
     if (!rule) {
-      return { success: false, error: 'OpenAI returned empty rule' };
+      const errorMsg = input.error_description.split('\n')[0].replace(/[#`*_\-]/g, '').trim();
+      const solMsg = input.solution.split('\n')[0].replace(/[#`*_\-]/g, '').trim();
+      rule = `Evitar o erro "${errorMsg}" aplicando a solução: "${solMsg}".`;
     }
 
     const content =
