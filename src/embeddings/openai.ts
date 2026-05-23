@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 /** Identifiers stored per-memory so vectors from incompatible spaces are never compared. */
 export const OPENAI_EMBED_MODEL = 'text-embedding-3-small';
 export const LOCAL_EMBED_MODEL = 'local-hash-v1';
+export const OPENAI_CHAT_MODEL = 'gpt-4o-mini';
 
 export interface EmbeddingResult {
   /** The 1536-dim embedding vector. */

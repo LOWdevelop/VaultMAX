@@ -24,8 +24,8 @@ let _db: DatabaseSync | null = null;
 
 function getDb(): DatabaseSync {
   if (!_db) {
-    // __dirname = dist/db — go two levels up to reach VaultMAX root
-    const dbPath = path.join(__dirname, '..', '..', 'vaultmax.db');
+    const envDbPath = process.env.VAULTMAX_DB_PATH;
+    const dbPath = envDbPath ? path.resolve(envDbPath) : path.join(__dirname, '..', '..', 'vaultmax.db');
     _db = new DatabaseSync(dbPath);
     // Optimization for multi-window Cursor concurrency (WAL and busy_timeout)
     _db.exec('PRAGMA journal_mode = WAL;');

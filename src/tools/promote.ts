@@ -7,6 +7,7 @@ import {
   deserializeEmbedding,
   cosineSimilarity,
   isModelCompatible,
+  OPENAI_CHAT_MODEL,
 } from '../embeddings/openai';
 import { insertMemory, getMemoryById, getAllByProject } from '../db/client';
 import { appendToVault, RelatedMemory } from '../vault/writer';
@@ -77,7 +78,7 @@ export async function promote(input: PromoteInput) {
       if (isKeyValid) {
         try {
           const completion = await getOpenAI().chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: OPENAI_CHAT_MODEL,
             messages: [
               {
                 role: 'system',

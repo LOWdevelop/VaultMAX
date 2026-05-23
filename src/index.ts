@@ -26,7 +26,7 @@ import { rebuild } from './tools/rebuild';
 
 const server = new McpServer({
   name: 'vaultmax',
-  version: '2.0.0',
+  version: '2.1.0',
 });
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] });

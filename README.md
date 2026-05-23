@@ -2,8 +2,9 @@
 
 # 🧠 VaultMAX
 
-**Second brain for developers — persistent memory MCP server for Cursor**
+**Second brain for developers — persistent memory MCP server for Cursor & VS Code**
 
+[![Version](https://img.shields.io/badge/Version-2.1.0-blueviolet?style=for-the-badge)](https://github.com/FFloriani/VaultMAX)
 [![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-blueviolet?style=for-the-badge)](https://modelcontextprotocol.io)
@@ -16,13 +17,23 @@
 
 ## 🤔 What is VaultMAX?
 
-VaultMAX is a **local MCP server** that gives your AI assistant a persistent memory across sessions. Install it once on your machine, connect any project via `.cursor/mcp.json`, and your Cursor Composer will never forget a decision, a bug fix, or your project structure again.
+VaultMAX is a **local MCP server** that gives your AI assistant a persistent memory across sessions. Install it once on your machine, connect any project via `.mcp.json`, and your AI assistant will never forget a decision, a bug fix, or your project structure again.
 
 - 🗄️ **SQLite** database (Node.js native — no compilation needed)
 - 🔍 **Semantic search** via OpenAI embeddings (`text-embedding-3-small`)
 - 📝 **Human-readable vault** — every memory is also saved as `.md` files (Obsidian-ready)
 - 🪟 **Windows-first** design
 - 🔌 **One server, many projects** — just change the `PROJECT` env variable
+
+---
+
+## 🚀 Key Features in v2.1.0
+
+- 🔗 **Dynamic Workspace Resolution (`listRoots()`):** Resolves projects automatically based on the active IDE workspace folders.
+- 🗲 **SQLite WAL Concurrency:** Optimized for multi-window concurrent Cursor/VS Code sessions with WAL journal mode and retries.
+- 🛡️ **Vector Space Safety & Compatibility:** Never compares vectors from incompatible spaces (e.g. OpenAI vs Local Hash fallbacks), preventing math noise.
+- 📊 **Project-Capped Skill Profiles (`vaultmax_profile`):** Generates beautiful professional portfolios using tag aliasing, evidence floor validation, and project-capped scoring to prevent template score inflation.
+- 🔄 **Database-Wide Auto-Healing Rebuild:** Global rebuild (`project: "all"`) to restore and auto-heal all legacy vectors to `text-embedding-3-small`.
 
 ---
 

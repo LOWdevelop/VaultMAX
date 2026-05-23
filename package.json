@@ -1,6 +1,6 @@
 {
   "name": "vaultmax",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "MCP server — second brain for development projects",
   "main": "dist/index.js",
   "scripts": {
