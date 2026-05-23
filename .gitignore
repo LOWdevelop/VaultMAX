@@ -7,8 +7,13 @@ dist/
 # environment variables (never commit real keys)
 .env
 
+# local MCP config — contains a real API key, never commit
+.mcp.json
+
 # SQLite database (generated at runtime)
 vaultmax.db
+vaultmax.db-shm
+vaultmax.db-wal
 *.backup
 
 # vault content is local — each user has their own

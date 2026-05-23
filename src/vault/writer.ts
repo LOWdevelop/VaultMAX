@@ -30,12 +30,20 @@ function projectDir(project: string, vaultPath: string): string {
   return path.join(vaultPath, project);
 }
 
+function identityDir(identity: string, vaultPath: string): string {
+  return path.join(vaultPath, '_profiles', identity);
+}
+
+function fileRoot(project: string, vaultPath: string, identity?: string): string {
+  return project === identity && identity ? identityDir(identity, vaultPath) : projectDir(project, vaultPath);
+}
+
 function memoryFilePath(project: string, id: string, vaultPath: string): string {
   return path.join(projectDir(project, vaultPath), 'memories', `${id}.md`);
 }
 
-export function ensureVaultExists(project: string, vaultPath: string): void {
-  const pd = projectDir(project, vaultPath);
+export function ensureVaultExists(project: string, vaultPath: string, identity?: string): void {
+  const pd = fileRoot(project, vaultPath, identity);
   fs.mkdirSync(pd, { recursive: true });
   fs.mkdirSync(path.join(pd, 'memories'), { recursive: true });
 
@@ -61,9 +69,10 @@ export function appendToVault(
   tags: string[],
   importance: number,
   related: RelatedMemory[],
-  vaultPath: string
+  vaultPath: string,
+  identity?: string
 ): void {
-  ensureVaultExists(project, vaultPath);
+  ensureVaultExists(project, vaultPath, identity);
 
   const now = new Date();
   const timestamp = now.toISOString().slice(0, 19).replace('T', ' ');
@@ -87,13 +96,17 @@ export function appendToVault(
     `---\n\n` +
     `${content}\n${relatedSection}`;
 
-  fs.writeFileSync(memoryFilePath(project, id, vaultPath), memFile, 'utf8');
+  fs.writeFileSync(
+    memoryFilePath(project, id, vaultPath),
+    memFile,
+    'utf8'
+  );
 
   for (const rel of related) {
     addBacklink(project, rel.id, id, rel.score, content, vaultPath);
   }
 
-  const indexPath = path.join(projectDir(project, vaultPath), INDEX_FILE[type]);
+  const indexPath = path.join(fileRoot(project, vaultPath, identity), INDEX_FILE[type]);
   const tagStr = tags.length > 0 ? ` — \`${tags.join('`, `')}\`` : '';
   const impMarker = importance >= 4 ? ' ⭐' : '';
   fs.appendFileSync(indexPath, `- [[${id}]] · ${date}${impMarker}${tagStr}\n`, 'utf8');

@@ -1,15 +1,14 @@
-import path from 'path';
-import { deleteMemory, normalizeProject } from '../db/client';
+import { deleteMemory } from '../db/client';
 import { removeFromVault } from '../vault/writer';
+import { getToolContext } from './context';
 
 interface ForgetInput {
   memory_id: string;
   project?: string;
 }
 
-export async function forget(input: ForgetInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+export async function forget(input: ForgetInput, clientRoots?: any[]) {
+  const { project, vaultPath } = getToolContext(input.project, clientRoots);
 
   try {
     deleteMemory(input.memory_id);
