@@ -162,6 +162,8 @@ src/
 | `OPENAI_API_KEY` | — | OpenAI API key (required) |
 | `PROJECT` | `default` | Current project name |
 | `VAULT_PATH` | `./vaults` | Absolute path to vaults folder |
+| `VAULTMAX_DB_PATH` | `vaultmax.db` | Absolute path to a custom SQLite database file (useful for test isolation) |
+| `VAULT_IDENTITY` | `floriani` | Identity folder name for developer professional profile (used under `_profiles/`) |
 
 ---
 
