@@ -35,7 +35,7 @@ export function observe(input: ObserveInput) {
         content: mem.content,
         type: mem.type,
         project: mem.project,
-        tags: JSON.parse(mem.tags) as string[],
+        tags: mem.tags,
         importance: mem.importance,
         created_at: mem.created_at,
       });

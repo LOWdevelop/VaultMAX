@@ -1,5 +1,6 @@
-import { generateEmbedding, deserializeEmbedding, cosineSimilarity } from '../embeddings/openai';
+import { generateEmbedding, deserializeEmbedding, cosineSimilarity, isModelCompatible } from '../embeddings/openai';
 import { getAllByProject, getAllMemories, normalizeProject } from '../db/client';
+import { getToolContext } from './context';
 
 interface RecallInput {
   query: string;
@@ -37,8 +38,8 @@ function clampBoost(b: number): number {
  *   "project" — old behavior, only the active project
  *   "all"     — all memories, no boost applied (flat ranking)
  */
-export async function recall(input: RecallInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
+export async function recall(input: RecallInput, clientRoots?: any[]) {
+  const { project } = getToolContext(input.project, clientRoots);
   const limit = input.limit ?? 5;
   const expand = input.expand ?? false;
   const scope = input.scope ?? 'auto';
@@ -53,9 +54,30 @@ export async function recall(input: RecallInput) {
 
     const ranked = memories
       .map((m) => {
-        const similarity = cosineSimilarity(queryEmbedding, deserializeEmbedding(m.embedding));
+        // Calculate temporal decay based on age and memory type
+        const isoDateString = m.created_at.replace(' ', 'T');
+        const mDate = new Date(isoDateString);
+        const diffTime = Math.abs(Date.now() - mDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+
+        let decay = 1.0;
+        if (m.type === 'change' || m.type === 'error') {
+          // Half-life ~90 days
+          decay = Math.exp(-diffDays / 130);
+        } else if (m.type === 'decision' || m.type === 'lesson') {
+          // Half-life ~360 days
+          decay = Math.exp(-diffDays / 520);
+        } // constraint and map have decay = 1.0
+
+        // Floor the decay so older memories are not completely lost
+        decay = Math.max(0.4, decay);
+
+        let similarity = 0;
+        if (isModelCompatible(queryEmbedding.model, m.embedding_model)) {
+          similarity = cosineSimilarity(queryEmbedding.vector, deserializeEmbedding(m.embedding));
+        }
         const importanceWeight = 1 + (m.importance - 3) * 0.1; // 0.8..1.2
-        const baseScore = similarity * importanceWeight;
+        const baseScore = similarity * importanceWeight * decay;
 
         // Apply location boost (only in 'auto' scope)
         let boost = 0;
@@ -80,7 +102,7 @@ export async function recall(input: RecallInput) {
           content: m.content,
           type: m.type,
           project: m.project,
-          tags: JSON.parse(m.tags) as string[],
+          tags: m.tags,
           importance: m.importance,
           similarity: parseFloat(similarity.toFixed(3)),
           score: parseFloat(finalScore.toFixed(3)),

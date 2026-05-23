@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { getAllMemories } from '../db/client';
-import { deserializeEmbedding, cosineSimilarity } from '../embeddings/openai';
+import { getAllMemories, normalizeProject } from '../db/client';
+import { deserializeEmbedding, cosineSimilarity, isModelCompatible } from '../embeddings/openai';
+import { getToolContext } from './context';
 
 interface ProfileInput {
   dry_run?: boolean;
@@ -9,10 +10,11 @@ interface ProfileInput {
 
 export async function buildProfile(input: ProfileInput) {
   const dryRun = input.dry_run ?? false;
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+  const { vaultPath } = getToolContext('global');
 
   try {
     const all = getAllMemories();
+    const globalProject = normalizeProject('global');
     if (all.length === 0) {
       return { success: false, error: 'Nenhuma memória encontrada no banco para gerar o perfil.' };
     }
@@ -31,6 +33,7 @@ export async function buildProfile(input: ProfileInput) {
 
     for (const m of all) {
       const proj = m.project;
+      const isGlobal = normalizeProject(proj) === globalProject;
       if (!projects[proj]) {
         projects[proj] = {
           decisions: [],
@@ -51,12 +54,7 @@ export async function buildProfile(input: ProfileInput) {
         projects[proj].last_touched = m.created_at;
       }
 
-      let tagsArray: string[] = [];
-      try {
-        tagsArray = JSON.parse(m.tags);
-      } catch {
-        tagsArray = m.tags ? m.tags.split(',').map((t) => t.trim()) : [];
-      }
+      const tagsArray = m.tags;
 
       for (const t of tagsArray) {
         if (t && t !== 'auto' && t !== 'summary') {
@@ -64,7 +62,13 @@ export async function buildProfile(input: ProfileInput) {
         }
       }
 
-      if (m.type === 'decision') projects[proj].decisions.push(m);
+      if (isGlobal) {
+        if (m.type === 'decision') projects[proj].decisions.push(m);
+        else if (m.type === 'lesson') projects[proj].lessons.push(m);
+        else if (m.type === 'error') projects[proj].errors.push(m);
+        else if (m.type === 'constraint') projects[proj].constraints.push(m);
+        else if (m.type === 'map') projects[proj].maps.push(m);
+      } else if (m.type === 'decision') projects[proj].decisions.push(m);
       else if (m.type === 'lesson') projects[proj].lessons.push(m);
       else if (m.type === 'error') projects[proj].errors.push(m);
       else if (m.type === 'constraint') projects[proj].constraints.push(m);
@@ -84,12 +88,7 @@ export async function buildProfile(input: ProfileInput) {
     const now = new Date();
 
     for (const m of all) {
-      let tagsArray: string[] = [];
-      try {
-        tagsArray = JSON.parse(m.tags);
-      } catch {
-        tagsArray = m.tags ? m.tags.split(',').map((t) => t.trim()) : [];
-      }
+      let tagsArray = m.tags;
 
       // Filter out auto/generic tags
       tagsArray = tagsArray.filter((t) => t && t !== 'auto' && t !== 'summary');
@@ -151,7 +150,7 @@ export async function buildProfile(input: ProfileInput) {
       for (let j = i + 1; j < lessons.length; j++) {
         const a = lessons[i];
         const b = lessons[j];
-        if (a.project !== b.project) {
+        if (a.project !== b.project && isModelCompatible(a.embedding_model, b.embedding_model)) {
           const sim = cosineSimilarity(
             deserializeEmbedding(a.embedding),
             deserializeEmbedding(b.embedding)

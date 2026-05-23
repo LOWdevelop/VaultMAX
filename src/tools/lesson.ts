@@ -6,9 +6,11 @@ import {
   serializeEmbedding,
   deserializeEmbedding,
   cosineSimilarity,
+  isModelCompatible,
 } from '../embeddings/openai';
-import { insertMemory, getAllByProject, normalizeProject } from '../db/client';
+import { insertMemory, getAllByProject, runInTransaction } from '../db/client';
 import { appendToVault, RelatedMemory } from '../vault/writer';
+import { getToolContext } from './context';
 
 interface LessonInput {
   error_description: string;
@@ -28,9 +30,8 @@ function getOpenAI(): OpenAI {
  * then stores it as a `lesson` memory. Lessons are surfaced in vaultmax_brief
  * so weaker AIs see them before making the same mistake again.
  */
-export async function lesson(input: LessonInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+export async function lesson(input: LessonInput, clientRoots?: any[]) {
+  const { project, vaultPath } = getToolContext(input.project, clientRoots);
 
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -76,11 +77,16 @@ export async function lesson(input: LessonInput) {
     const embedding = await generateEmbedding(content);
     const existing = getAllByProject(project);
     const related: RelatedMemory[] = existing
-      .map((m) => ({
-        id: m.id,
-        content: m.content,
-        score: cosineSimilarity(embedding, deserializeEmbedding(m.embedding)),
-      }))
+      .map((m) => {
+        if (!isModelCompatible(embedding.model, m.embedding_model)) {
+          return { id: m.id, content: m.content, score: 0 };
+        }
+        return {
+          id: m.id,
+          content: m.content,
+          score: cosineSimilarity(embedding.vector, deserializeEmbedding(m.embedding)),
+        };
+      })
       .filter((m) => m.score >= 0.45)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
@@ -88,14 +94,18 @@ export async function lesson(input: LessonInput) {
     const id = uuidv4();
     const tags = input.tags ?? [];
 
-    insertMemory({
-      id,
-      project,
-      type: 'lesson',
-      content,
-      tags: JSON.stringify(tags),
-      embedding: serializeEmbedding(embedding),
-      importance: 4,
+    // Wrap database write in a SQL transaction
+    runInTransaction(() => {
+      insertMemory({
+        id,
+        project,
+        type: 'lesson',
+        content,
+        tags: tags,
+        embedding: serializeEmbedding(embedding.vector),
+        embedding_model: embedding.model,
+        importance: 4,
+      });
     });
 
     appendToVault(project, 'lesson', content, id, tags, 4, related, vaultPath);

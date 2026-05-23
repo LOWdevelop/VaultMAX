@@ -1,17 +1,17 @@
-import { getMapsByProject, normalizeProject } from '../db/client';
+import { getMapsByProject, resolveProject } from '../db/client';
 
 interface MapInput {
   project?: string;
 }
 
-export async function getMap(input: MapInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
+export async function getMap(input: MapInput, clientRoots?: any[]) {
+  const project = resolveProject(input.project, clientRoots);
 
   try {
     return getMapsByProject(project).map((m) => ({
       id: m.id,
       content: m.content,
-      tags: JSON.parse(m.tags) as string[],
+      tags: m.tags,
       importance: m.importance,
       created_at: m.created_at,
     }));

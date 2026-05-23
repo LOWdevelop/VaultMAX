@@ -1,8 +1,9 @@
-import { generateEmbedding, deserializeEmbedding, cosineSimilarity } from '../embeddings/openai';
-import { getAllByProject, getAllMemories, normalizeProject, getMemoriesBySymbol, Memory } from '../db/client';
-import { detectLanguage, extractSymbolsAsync } from '../ast/parser';
 import fs from 'fs';
 import path from 'path';
+import { generateEmbedding, deserializeEmbedding, cosineSimilarity, isModelCompatible } from '../embeddings/openai';
+import { getAllByProject, getAllMemories, normalizeProject, getMemoriesBySymbol, Memory } from '../db/client';
+import { detectLanguage, extractSymbolsAsync } from '../ast/parser';
+import { getToolContext } from './context';
 
 interface BriefInput {
   query: string;
@@ -20,8 +21,8 @@ interface BriefInput {
  *  - bound      (memories bound specifically to symbols in the active file/cursor)
  *  - relevant   (top semantic matches for the current task)
  */
-export async function brief(input: BriefInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
+export async function brief(input: BriefInput, clientRoots?: any[]) {
+  const { project } = getToolContext(input.project, clientRoots);
 
   try {
     const all = getAllByProject(project);
@@ -41,7 +42,7 @@ export async function brief(input: BriefInput) {
       .map((m) => ({
         id: m.id,
         content: m.content,
-        tags: JSON.parse(m.tags) as string[],
+        tags: m.tags,
       }));
 
     const latestMap = all
@@ -78,9 +79,9 @@ export async function brief(input: BriefInput) {
       }
     };
 
-    // 1. Symbol-based cursor lookup
+    // 1. Symbol-based cursor lookup (scoped by project)
     if (input.cursorSymbol) {
-      const cursorMemories = getMemoriesBySymbol(input.cursorSymbol);
+      const cursorMemories = getMemoriesBySymbol(input.cursorSymbol, project);
       for (const m of cursorMemories) {
         addBoundMemory(m, input.cursorSymbol);
       }
@@ -109,7 +110,7 @@ export async function brief(input: BriefInput) {
         const allSymbols = await extractSymbolsAsync(code, lang);
 
         for (const sym of allSymbols) {
-          const symMemories = getMemoriesBySymbol(sym.name);
+          const symMemories = getMemoriesBySymbol(sym.name, project);
           for (const m of symMemories) {
             addBoundMemory(m, sym.name, absolutePath);
           }
@@ -124,9 +125,29 @@ export async function brief(input: BriefInput) {
     const relevant_memories = allCrossProject
       .filter((m) => m.type !== 'constraint' && m.type !== 'map' && !boundIds.has(m.id))
       .map((m) => {
-        const sim = cosineSimilarity(queryEmbedding, deserializeEmbedding(m.embedding));
+        // Calculate temporal decay based on age and memory type
+        const isoDateString = m.created_at.replace(' ', 'T');
+        const mDate = new Date(isoDateString);
+        const diffTime = Math.abs(Date.now() - mDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+
+        let decay = 1.0;
+        if (m.type === 'change' || m.type === 'error') {
+          // Half-life ~90 days
+          decay = Math.exp(-diffDays / 130);
+        } else if (m.type === 'decision' || m.type === 'lesson') {
+          // Half-life ~360 days
+          decay = Math.exp(-diffDays / 520);
+        } // constraint and map have decay = 1.0
+
+        decay = Math.max(0.4, decay);
+
+        let sim = 0;
+        if (isModelCompatible(queryEmbedding.model, m.embedding_model)) {
+          sim = cosineSimilarity(queryEmbedding.vector, deserializeEmbedding(m.embedding));
+        }
         const importanceWeight = 1 + (m.importance - 3) * 0.1;
-        const baseScore = sim * importanceWeight;
+        const baseScore = sim * importanceWeight * decay;
 
         // Location boost
         const memProject = normalizeProject(m.project);

@@ -66,18 +66,24 @@ Restart Cursor — the 5 tools will appear automatically in Composer.
 
 ---
 
-## 🛠️ The 8 Tools
+## 🛠️ The 14 Tools
 
 | Tool | Description |
 |------|-------------|
 | `vaultmax_brief` | **One-shot context bundle** — constraints + map + recent decisions/lessons + semantic matches for the current task. Designed to give weaker AIs full project context in a single call. |
-| `vaultmax_remember` | Save a memory with type, content, tags and importance (1–5). Auto-rejects duplicates (>92% similar). |
-| `vaultmax_recall` | Semantic search weighted by importance. |
+| `vaultmax_remember` | Save a memory with type, content, tags and importance (1–5). Auto-rejects duplicates (>92% similar). Scopes symbols to active file. |
+| `vaultmax_recall` | Semantic search across memories with location boost and temporal ranking decay. |
+| `vaultmax_observe` | Hydrate memory IDs with full content. Pick only what you need ("pay-only-what-you-read" pattern). |
 | `vaultmax_lesson` | Convert an error+solution into a preventive RULE via AI. Surfaces in `brief` so future tasks avoid the same mistake. |
-| `vaultmax_summarize_project` | Regenerate the project map from all memories via AI. Keeps `brief` fresh. |
+| `vaultmax_summarize_project` | Regenerate the project map by analyzing all existing memories via AI. Keeps `brief` fresh. |
 | `vaultmax_update` | Update memory content by ID (re-embeds). |
 | `vaultmax_forget` | Delete a memory permanently. |
 | `vaultmax_map` | List all map-type memories, newest first. |
+| `vaultmax_profile` | Compile all decisions, lessons, constraints, and project maps into a live professional profile with skill weights and timelines. |
+| `vaultmax_promote` | Promote multiple project lesson memories with high similarity into a single unified universal-rule. |
+| `vaultmax_supersede` | Replace an outdated memory with a new version. Preserves history but hides old active memory. |
+| `vaultmax_handoff` | Generate a dense Markdown handoff bundle for a project. Instantly transfers project context. |
+| `vaultmax_rebuild` | Force rebuild of all physical Markdown vaults and Obsidian indexes from the SQLite database rows. |
 
 ### Memory Types
 

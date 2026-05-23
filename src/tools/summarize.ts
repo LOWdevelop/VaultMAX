@@ -6,9 +6,11 @@ import {
   serializeEmbedding,
   deserializeEmbedding,
   cosineSimilarity,
+  isModelCompatible,
 } from '../embeddings/openai';
-import { insertMemory, getAllByProject, normalizeProject } from '../db/client';
+import { insertMemory, getAllByProject, runInTransaction } from '../db/client';
 import { appendToVault, RelatedMemory } from '../vault/writer';
+import { getToolContext } from './context';
 
 interface SummarizeInput {
   project?: string;
@@ -25,9 +27,8 @@ function getOpenAI(): OpenAI {
  * The map is saved as a new `map` memory (history preserved) and also appears
  * as the latest map in vaultmax_brief / vaultmax_map.
  */
-export async function summarize(input: SummarizeInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+export async function summarize(input: SummarizeInput, clientRoots?: any[]) {
+  const { project, vaultPath } = getToolContext(input.project, clientRoots);
 
   try {
     const all = getAllByProject(project);
@@ -82,11 +83,16 @@ export async function summarize(input: SummarizeInput) {
 
     const embedding = await generateEmbedding(summary);
     const related: RelatedMemory[] = all
-      .map((m) => ({
-        id: m.id,
-        content: m.content,
-        score: cosineSimilarity(embedding, deserializeEmbedding(m.embedding)),
-      }))
+      .map((m) => {
+        if (!isModelCompatible(embedding.model, m.embedding_model)) {
+          return { id: m.id, content: m.content, score: 0 };
+        }
+        return {
+          id: m.id,
+          content: m.content,
+          score: cosineSimilarity(embedding.vector, deserializeEmbedding(m.embedding)),
+        };
+      })
       .filter((m) => m.score >= 0.4)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
@@ -94,14 +100,18 @@ export async function summarize(input: SummarizeInput) {
     const id = uuidv4();
     const tags = ['summary', 'auto'];
 
-    insertMemory({
-      id,
-      project,
-      type: 'map',
-      content: summary,
-      tags: JSON.stringify(tags),
-      embedding: serializeEmbedding(embedding),
-      importance: 4,
+    // Wrap database write in a SQL transaction
+    runInTransaction(() => {
+      insertMemory({
+        id,
+        project,
+        type: 'map',
+        content: summary,
+        tags: tags,
+        embedding: serializeEmbedding(embedding.vector),
+        embedding_model: embedding.model,
+        importance: 4,
+      });
     });
 
     appendToVault(project, 'map', summary, id, tags, 4, related, vaultPath);

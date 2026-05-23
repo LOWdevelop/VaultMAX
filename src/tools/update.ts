@@ -1,7 +1,8 @@
 import path from 'path';
 import { generateEmbedding, serializeEmbedding } from '../embeddings/openai';
-import { getMemoryById, updateMemory, normalizeProject } from '../db/client';
+import { getMemoryById, updateMemory } from '../db/client';
 import { updateInVault } from '../vault/writer';
+import { getToolContext } from './context';
 
 interface UpdateInput {
   memory_id: string;
@@ -9,9 +10,8 @@ interface UpdateInput {
   project?: string;
 }
 
-export async function update(input: UpdateInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+export async function update(input: UpdateInput, clientRoots?: any[]) {
+  const { project, vaultPath } = getToolContext(input.project, clientRoots);
 
   try {
     const existing = getMemoryById(input.memory_id);
@@ -20,7 +20,7 @@ export async function update(input: UpdateInput) {
     }
 
     const embedding = await generateEmbedding(input.new_content);
-    updateMemory(input.memory_id, input.new_content, serializeEmbedding(embedding));
+    updateMemory(input.memory_id, input.new_content, serializeEmbedding(embedding.vector), embedding.model);
     updateInVault(project, input.memory_id, input.new_content, vaultPath);
 
     return { success: true };

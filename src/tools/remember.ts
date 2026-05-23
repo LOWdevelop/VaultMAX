@@ -6,10 +6,12 @@ import {
   serializeEmbedding,
   deserializeEmbedding,
   cosineSimilarity,
+  isModelCompatible,
 } from '../embeddings/openai';
-import { insertMemory, getAllByProject, normalizeProject, MemoryType, bindSymbol } from '../db/client';
+import { insertMemory, getAllByProject, MemoryType, bindSymbol, runInTransaction } from '../db/client';
 import { appendToVault, RelatedMemory } from '../vault/writer';
 import { detectLanguage, extractSymbolsAsync } from '../ast/parser';
+import { getToolContext } from './context';
 
 interface RememberInput {
   content: string;
@@ -30,20 +32,24 @@ function defaultImportance(type: MemoryType): number {
   return 3;
 }
 
-export async function remember(input: RememberInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+export async function remember(input: RememberInput, clientRoots?: any[]) {
+  const { project, vaultPath, identity } = getToolContext(input.project, clientRoots);
   const importance = input.importance ?? defaultImportance(input.type);
 
   try {
     const embedding = await generateEmbedding(input.content);
     const existing = getAllByProject(project);
 
-    // Score every existing memory once
-    const scored = existing.map((m) => ({
-      memory: m,
-      score: cosineSimilarity(embedding, deserializeEmbedding(m.embedding)),
-    }));
+    // Score every existing memory once, skipping incompatible vector spaces
+    const scored = existing.map((m) => {
+      if (!isModelCompatible(embedding.model, m.embedding_model)) {
+        return { memory: m, score: 0 };
+      }
+      return {
+        memory: m,
+        score: cosineSimilarity(embedding.vector, deserializeEmbedding(m.embedding)),
+      };
+    });
 
     // Duplicate detection
     const dup = scored.find((s) => s.score >= DUPLICATE_THRESHOLD);
@@ -65,16 +71,7 @@ export async function remember(input: RememberInput) {
       .map((s) => ({ id: s.memory.id, content: s.memory.content, score: s.score }));
 
     const id = uuidv4();
-    insertMemory({
-      id,
-      project,
-      type: input.type,
-      content: input.content,
-      tags: JSON.stringify(input.tags ?? []),
-      embedding: serializeEmbedding(embedding),
-      importance,
-    });
-
+    const symbolsToBind: Array<{ name: string; type: string; path: string }> = [];
     const boundSymbols: string[] = [];
 
     // --- AST Symbol Indexing & Linking (Chronode Feature Integration) ---
@@ -93,7 +90,7 @@ export async function remember(input: RememberInput) {
         // 1. Auto-bind any symbol that is mentioned in the memory content
         for (const sym of allSymbols) {
           if (contentLower.includes(sym.name.toLowerCase())) {
-            bindSymbol(id, sym.name, sym.type, absolutePath);
+            symbolsToBind.push({ name: sym.name, type: sym.type, path: absolutePath });
             boundSymbols.push(`${sym.type}:${sym.name}`);
           }
         }
@@ -105,13 +102,31 @@ export async function remember(input: RememberInput) {
             const symType = matched ? matched.type : 'function';
             
             if (!boundSymbols.includes(`${symType}:${symName}`)) {
-              bindSymbol(id, symName, symType, absolutePath);
+              symbolsToBind.push({ name: symName, type: symType, path: absolutePath });
               boundSymbols.push(`${symType}:${symName}`);
             }
           }
         }
       }
     }
+
+    // Wrap database writes in a SQL transaction
+    runInTransaction(() => {
+      insertMemory({
+        id,
+        project,
+        type: input.type,
+        content: input.content,
+        tags: input.tags ?? [],
+        embedding: serializeEmbedding(embedding.vector),
+        embedding_model: embedding.model,
+        importance,
+      });
+
+      for (const sym of symbolsToBind) {
+        bindSymbol(id, sym.name, sym.type, sym.path);
+      }
+    });
 
     appendToVault(
       project,
@@ -121,7 +136,8 @@ export async function remember(input: RememberInput) {
       input.tags ?? [],
       importance,
       related,
-      vaultPath
+      vaultPath,
+      identity
     );
 
     return {

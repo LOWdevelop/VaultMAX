@@ -1,4 +1,5 @@
-import { getAllByProject, getSupersededMemories, normalizeProject, Memory } from '../db/client';
+import { getAllByProject, getSupersededMemories, Memory } from '../db/client';
+import { getToolContext } from './context';
 import fs from 'fs';
 import path from 'path';
 
@@ -20,8 +21,8 @@ interface HandoffInput {
  *
  * Inspired by Chronode UC-9 Knowledge Handoff.
  */
-export function handoff(input: HandoffInput) {
-  const project = normalizeProject(input.project ?? process.env.PROJECT ?? 'default');
+export function handoff(input: HandoffInput, clientRoots?: any[]) {
+  const { project, vaultPath } = getToolContext(input.project, clientRoots);
   const includeSuperseeded = input.include_superseded ?? false;
 
   const all = getAllByProject(project);
@@ -160,7 +161,7 @@ export function handoff(input: HandoffInput) {
   const markdown = lines.join('\n');
 
   // Save to vaults/<project>/HANDOFF.md
-  const vaultsDir = path.join(__dirname, '..', '..', 'vaults', project);
+  const vaultsDir = path.join(vaultPath, project);
   if (!fs.existsSync(vaultsDir)) fs.mkdirSync(vaultsDir, { recursive: true });
   const handoffPath = path.join(vaultsDir, 'HANDOFF.md');
   fs.writeFileSync(handoffPath, markdown, 'utf8');
@@ -184,10 +185,6 @@ export function handoff(input: HandoffInput) {
 }
 
 function parseTags(m: Memory): string {
-  try {
-    const tags = JSON.parse(m.tags) as string[];
-    return tags.length > 0 ? `[${tags.join(', ')}]` : '';
-  } catch {
-    return '';
-  }
+  const tags = m.tags;
+  return tags && tags.length > 0 ? `[${tags.join(', ')}]` : '';
 }

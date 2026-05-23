@@ -6,9 +6,11 @@ import {
   serializeEmbedding,
   deserializeEmbedding,
   cosineSimilarity,
+  isModelCompatible,
 } from '../embeddings/openai';
 import { insertMemory, getMemoryById, getAllByProject } from '../db/client';
 import { appendToVault, RelatedMemory } from '../vault/writer';
+import { getToolContext } from './context';
 
 interface PromoteInput {
   memory_ids: string[];
@@ -28,7 +30,7 @@ function getOpenAI(): OpenAI {
  * Saves to both SQLite (with project 'global') and the vault under global/ lessons.
  */
 export async function promote(input: PromoteInput) {
-  const vaultPath = process.env.VAULT_PATH ?? path.join(process.cwd(), 'vaults');
+  const { vaultPath } = getToolContext('global');
 
   try {
     if (!input.memory_ids || input.memory_ids.length < 2) {
@@ -112,15 +114,20 @@ export async function promote(input: PromoteInput) {
       memories.map((m) => `* [Project: ${m.project.toUpperCase()}] ${m.content}`).join('\n');
 
     const embedding = await generateEmbedding(content);
-    
+
     // Find related memories in global scope
     const existing = getAllByProject('global');
     const related: RelatedMemory[] = existing
-      .map((m) => ({
-        id: m.id,
-        content: m.content,
-        score: cosineSimilarity(embedding, deserializeEmbedding(m.embedding)),
-      }))
+      .map((m) => {
+        if (!isModelCompatible(embedding.model, m.embedding_model)) {
+          return { id: m.id, content: m.content, score: 0 };
+        }
+        return {
+          id: m.id,
+          content: m.content,
+          score: cosineSimilarity(embedding.vector, deserializeEmbedding(m.embedding)),
+        };
+      })
       .filter((m) => m.score >= 0.45)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
@@ -134,8 +141,9 @@ export async function promote(input: PromoteInput) {
       project: 'global',
       type: 'lesson',
       content,
-      tags: JSON.stringify(tags),
-      embedding: serializeEmbedding(embedding),
+      tags: tags,
+      embedding: serializeEmbedding(embedding.vector),
+      embedding_model: embedding.model,
       importance: 5,
     });
 

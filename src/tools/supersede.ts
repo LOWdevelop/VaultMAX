@@ -5,6 +5,7 @@ import {
   insertMemory,
   supersedeMemory,
   normalizeProject,
+  runInTransaction,
 } from '../db/client';
 
 interface SupersedeInput {
@@ -21,7 +22,7 @@ interface SupersedeInput {
  *
  * Inspired by Chronode SDD §6.1 / §8.4 bi-temporality model.
  */
-export async function supersede(input: SupersedeInput) {
+export async function supersede(input: SupersedeInput, clientRoots?: any[]) {
   const oldMem = getMemoryById(input.old_memory_id);
   if (!oldMem) {
     return { error: `Memory '${input.old_memory_id}' not found.` };
@@ -38,21 +39,25 @@ export async function supersede(input: SupersedeInput) {
 
   // Generate embedding for the new content
   const embedding = await generateEmbedding(input.new_content);
-  const embeddingBuf = serializeEmbedding(embedding);
+  const embeddingBuf = serializeEmbedding(embedding.vector);
 
-  // Create the new active memory (inherits type and importance from old)
-  insertMemory({
-    id: newId,
-    project,
-    type: oldMem.type as 'decision' | 'error' | 'map' | 'change' | 'lesson' | 'constraint',
-    content: input.new_content,
-    tags: JSON.stringify(input.tags ?? JSON.parse(oldMem.tags)),
-    embedding: embeddingBuf,
-    importance: oldMem.importance,
+  // Wrap database writes in a SQL transaction
+  runInTransaction(() => {
+    // Create the new active memory (inherits type and importance from old)
+    insertMemory({
+      id: newId,
+      project,
+      type: oldMem.type,
+      content: input.new_content,
+      tags: input.tags ?? oldMem.tags,
+      embedding: embeddingBuf,
+      embedding_model: embedding.model,
+      importance: oldMem.importance,
+    });
+
+    // Mark old memory as superseded
+    supersedeMemory(input.old_memory_id, newId);
   });
-
-  // Mark old memory as superseded
-  supersedeMemory(input.old_memory_id, newId);
 
   return {
     superseded: {

@@ -71,62 +71,61 @@ async function getLanguage(lang: string): Promise<any | null> {
 
 const QUERIES: Record<string, string> = {
   javascript: `
-    (class_declaration name: (identifier) @class_name) @class
-    (function_declaration name: (identifier) @func_name) @func
-    (method_definition name: (property_identifier) @method_name) @method
-    (arrow_function) @arrow
-    (variable_declarator name: (identifier) @var_name value: (arrow_function)) @arrow_assign
-    (export_statement declaration: (function_declaration name: (identifier) @export_func_name)) @export_func
-    (export_statement declaration: (class_declaration name: (identifier) @export_class_name)) @export_class
+    (class_declaration name: (identifier) @name) @symbol
+    (function_declaration name: (identifier) @name) @symbol
+    (method_definition name: (property_identifier) @name) @symbol
+    (variable_declarator name: (identifier) @name value: (arrow_function)) @symbol
+    (export_statement declaration: (function_declaration name: (identifier) @name)) @symbol
+    (export_statement declaration: (class_declaration name: (identifier) @name)) @symbol
   `,
   typescript: `
-    (class_declaration name: (type_identifier) @class_name) @class
-    (function_declaration name: (identifier) @func_name) @func
-    (method_definition name: (property_identifier) @method_name) @method
-    (interface_declaration name: (type_identifier) @iface_name) @iface
-    (variable_declarator name: (identifier) @var_name value: (arrow_function)) @arrow_assign
-    (export_statement declaration: (function_declaration name: (identifier) @export_func_name)) @export_func
-    (export_statement declaration: (class_declaration name: (type_identifier) @export_class_name)) @export_class
+    (class_declaration name: (type_identifier) @name) @symbol
+    (function_declaration name: (identifier) @name) @symbol
+    (method_definition name: (property_identifier) @name) @symbol
+    (interface_declaration name: (type_identifier) @name) @symbol
+    (variable_declarator name: (identifier) @name value: (arrow_function)) @symbol
+    (export_statement declaration: (function_declaration name: (identifier) @name)) @symbol
+    (export_statement declaration: (class_declaration name: (type_identifier) @name)) @symbol
   `,
   tsx: `
-    (class_declaration name: (type_identifier) @class_name) @class
-    (function_declaration name: (identifier) @func_name) @func
-    (method_definition name: (property_identifier) @method_name) @method
-    (interface_declaration name: (type_identifier) @iface_name) @iface
-    (variable_declarator name: (identifier) @var_name value: (arrow_function)) @arrow_assign
+    (class_declaration name: (type_identifier) @name) @symbol
+    (function_declaration name: (identifier) @name) @symbol
+    (method_definition name: (property_identifier) @name) @symbol
+    (interface_declaration name: (type_identifier) @name) @symbol
+    (variable_declarator name: (identifier) @name value: (arrow_function)) @symbol
   `,
   python: `
-    (class_definition name: (identifier) @class_name) @class
-    (function_definition name: (identifier) @func_name) @func
-    (decorated_definition definition: (function_definition name: (identifier) @deco_func_name)) @deco
+    (class_definition name: (identifier) @name) @symbol
+    (function_definition name: (identifier) @name) @symbol
+    (decorated_definition definition: (function_definition name: (identifier) @name)) @symbol
   `,
   go: `
-    (function_declaration name: (identifier) @func_name) @func
-    (method_declaration name: (field_identifier) @method_name) @method
-    (type_declaration (type_spec name: (type_identifier) @type_name)) @type
+    (function_declaration name: (identifier) @name) @symbol
+    (method_declaration name: (field_identifier) @name) @symbol
+    (type_declaration (type_spec name: (type_identifier) @name)) @symbol
   `,
   rust: `
-    (function_item name: (identifier) @func_name) @func
-    (struct_item name: (type_identifier) @struct_name) @struct
-    (impl_item type: (type_identifier) @impl_name) @impl
-    (trait_item name: (type_identifier) @trait_name) @trait
-    (enum_item name: (type_identifier) @enum_name) @enum
+    (function_item name: (identifier) @name) @symbol
+    (struct_item name: (type_identifier) @name) @symbol
+    (impl_item type: (type_identifier) @name) @symbol
+    (trait_item name: (type_identifier) @name) @symbol
+    (enum_item name: (type_identifier) @name) @symbol
   `,
   java: `
-    (class_declaration name: (identifier) @class_name) @class
-    (method_declaration name: (identifier) @method_name) @method
-    (interface_declaration name: (identifier) @iface_name) @iface
-    (constructor_declaration name: (identifier) @ctor_name) @ctor
+    (class_declaration name: (identifier) @name) @symbol
+    (method_declaration name: (identifier) @name) @symbol
+    (interface_declaration name: (identifier) @name) @symbol
+    (constructor_declaration name: (identifier) @name) @symbol
   `,
   php: `
-    (class_declaration name: (name) @class_name) @class
-    (function_definition name: (name) @func_name) @func
-    (method_declaration name: (name) @method_name) @method
+    (class_declaration name: (name) @name) @symbol
+    (function_definition name: (name) @name) @symbol
+    (method_declaration name: (name) @name) @symbol
   `,
   ruby: `
-    (class name: (constant) @class_name) @class
-    (method name: (identifier) @method_name) @method
-    (singleton_method name: (identifier) @smethod_name) @smethod
+    (class name: (constant) @name) @symbol
+    (method name: (identifier) @name) @symbol
+    (singleton_method name: (identifier) @name) @symbol
   `,
 };
 
@@ -170,24 +169,16 @@ export async function extractSymbolsAsync(code: string, language: string): Promi
 function walkNode(node: any, symbols: ASTSymbol[], seen: Set<string>, language: string): void {
   const nodeType = node.type;
 
-  // JavaScript / TypeScript / TSX
+  const capture = (type: ASTSymbol['type']) => {
+    const nameNode = node.childForFieldName('name');
+    if (nameNode) addSymbol(symbols, seen, nameNode.text, type, node);
+  };
+
   if (language === 'javascript' || language === 'typescript' || language === 'tsx') {
-    if (nodeType === 'class_declaration' || nodeType === 'class') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
-    if (nodeType === 'function_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'function', node);
-    }
-    if (nodeType === 'method_definition') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'method', node);
-    }
-    if (nodeType === 'interface_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'interface', node);
-    }
+    if (nodeType === 'class_declaration' || nodeType === 'class') capture('class');
+    if (nodeType === 'function_declaration') capture('function');
+    if (nodeType === 'method_definition') capture('method');
+    if (nodeType === 'interface_declaration') capture('interface');
     if (nodeType === 'variable_declarator') {
       const nameNode = node.childForFieldName('name');
       const valueNode = node.childForFieldName('value');
@@ -197,91 +188,42 @@ function walkNode(node: any, symbols: ASTSymbol[], seen: Set<string>, language: 
     }
   }
 
-  // Python
   if (language === 'python') {
-    if (nodeType === 'class_definition') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
-    if (nodeType === 'function_definition') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'function', node);
-    }
+    if (nodeType === 'class_definition') capture('class');
+    if (nodeType === 'function_definition') capture('function');
   }
 
-  // Go
   if (language === 'go') {
-    if (nodeType === 'function_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'function', node);
-    }
-    if (nodeType === 'method_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'method', node);
-    }
-    if (nodeType === 'type_spec') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
+    if (nodeType === 'function_declaration') capture('function');
+    if (nodeType === 'method_declaration') capture('method');
+    if (nodeType === 'type_spec') capture('class');
   }
 
-  // Rust
   if (language === 'rust') {
-    if (nodeType === 'function_item') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'function', node);
-    }
-    if (nodeType === 'struct_item' || nodeType === 'enum_item' || nodeType === 'trait_item') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
+    if (nodeType === 'function_item') capture('function');
+    if (nodeType === 'struct_item' || nodeType === 'enum_item' || nodeType === 'trait_item') capture('class');
     if (nodeType === 'impl_item') {
       const typeNode = node.childForFieldName('type');
       if (typeNode) addSymbol(symbols, seen, typeNode.text, 'class', node);
     }
   }
 
-  // Java
   if (language === 'java') {
-    if (nodeType === 'class_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
-    if (nodeType === 'method_declaration' || nodeType === 'constructor_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'method', node);
-    }
-    if (nodeType === 'interface_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'interface', node);
-    }
+    if (nodeType === 'class_declaration') capture('class');
+    if (nodeType === 'method_declaration' || nodeType === 'constructor_declaration') capture('method');
+    if (nodeType === 'interface_declaration') capture('interface');
   }
 
-  // PHP
   if (language === 'php') {
-    if (nodeType === 'class_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
-    if (nodeType === 'function_definition' || nodeType === 'method_declaration') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'function', node);
-    }
+    if (nodeType === 'class_declaration') capture('class');
+    if (nodeType === 'function_definition' || nodeType === 'method_declaration') capture('function');
   }
 
-  // Ruby
   if (language === 'ruby') {
-    if (nodeType === 'class') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'class', node);
-    }
-    if (nodeType === 'method' || nodeType === 'singleton_method') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) addSymbol(symbols, seen, nameNode.text, 'method', node);
-    }
+    if (nodeType === 'class') capture('class');
+    if (nodeType === 'method' || nodeType === 'singleton_method') capture('method');
   }
 
-  // Recurse into children
   for (let i = 0; i < node.childCount; i++) {
     walkNode(node.child(i), symbols, seen, language);
   }
